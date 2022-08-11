@@ -1,77 +1,56 @@
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import requests as r
-import bs4
 import jsbeautifier
 import utils
 
-IGNORE_WORD_LIST: List[str] = ['yandexMap', 'VKWebApp', 'reactInternal', 'component', 'Icon', 'Browser', 'Scroll', 'get',
-                               'Location', 'Panel', 'Point', 'Hook', 'animat', 'remove', 'event', 'mouse', 'refresh', 'padding',
-                               'child']
-
+IGNORE_WORD_LIST: List[str] = [
+    'yandexMap', 'VKWebApp', 'reactInternal', 'component', 'Icon', 'Browser', 'Scroll',
+    'get', 'Location', 'Panel', 'Point', 'Hook', 'animat', 'remove', 'event', 'mouse',
+    'refresh', 'padding', 'child'
+]
 IGNORE_URL_LIST: List[str] = ['w3.org', 'reactjs.org']
-SCRIPT_FAILURE_MSG: str = 'Seems like smth is broken. Please copy an error below and report it to me'
-'by using GitHub, https://vk.com/zema or https://t.me/damnware. Thanks!'
+SCRIPT_FAILURE_MSG: str = 'Seems like smth is broken. Please copy an error below' \
+    ' and report it to me by using GitHub, https://vk.com/zema or https://t.me/damnware. Thanks!'
+MAX_INPUT_ATTEMPTS: int = 3  # Define your own number of attempts
 
 
 def main() -> None:
-    scripts_url: List[str] = []
-
-    base_url: str = input('URL?\n').split('?')[0]
-    is_url_valid: bool = utils.validate_url(base_url)
-    if not is_url_valid:
+    input_data = utils.input_handler(MAX_INPUT_ATTEMPTS)
+    if input_data is None:
         return
 
-    scan_type: str = input(
-        'Select scan type(s)\n '
-        '1 - Hardcoded VK Token and Params\n '
-        '2 - Links \n '
-        '3 - possible tokens \n')
-    if not scan_type:
-        print('bro wtf, define scan type')
-        return
-
-    text: str = r.get(base_url).text
-    soup: bs4.BeautifulSoup = bs4.BeautifulSoup(text, features='html.parser')
-    scripts: bs4.element.ResultSet = soup.find_all('script')
-    srcs: List[str] = [link['src'] for link in scripts if 'src' in link.attrs]
-
-    for attribute in srcs:
-        if "index.html" in base_url:
-            base_url = base_url[:-10]
-
-        if attribute[0:2] == "./" or attribute[0:2] == "..":
-            attribute = attribute[2:]
-        elif "/" not in attribute[0:2] and attribute[0:4] != "http":
-            attribute = "/" + attribute
-
-        if "http" not in attribute:
-            url = base_url + attribute
-            scripts_url.append(url)
-        else:
-            scripts_url.append(attribute)
-
-    jser(scripts_url, scan_type)
-
-
-def jser(scripts_url, scan_type) -> None:
+    scripts_url: List[str] = utils.get_list_of_scripts(input_data['base_url'])
     print(f'List of scripts URL: {scripts_url}')
+    check_scripts_links(scripts_url, input_data['scan_type'])
+    print('Finished scanning!')
 
-    for file in scripts_url:
+
+def check_scripts_links(scripts_url: List[str], scan_type: str) -> None:
+    dict_with_possible_tokens: Dict[str, List[str]] = {}
+
+    for url in scripts_url:
         try:
-            script_text: str = r.get(file).text
+            script_text: str = r.get(url).text
             beautified_lines: str = jsbeautifier.beautify(
                 script_text).splitlines()
-            scanner(beautified_lines, scan_type)
-        except Exception as e:
-            # Better to specify exception
-            # Check https://pylint.pycqa.org/en/latest/user_guide/messages/warning/broad-except.html and which exceptions can be raised here
-            print(f'{SCRIPT_FAILURE_MSG}\nHere are error details: {e}')
-            pass
+            list_of_tokens = scan_script(beautified_lines, scan_type)
+            if list_of_tokens is not None:
+                dict_with_possible_tokens[url] = list_of_tokens
+        except r.exceptions.RequestException as request_error:
+            print(f'{SCRIPT_FAILURE_MSG}\nHere are error details: {request_error}')
+        except TypeError as splitlines_error:
+            print(f'{SCRIPT_FAILURE_MSG}\nHere are error details: {splitlines_error}')
+
+    if dict_with_possible_tokens:
+        print('Found some possible tokens:')
+        for i, (key, value) in enumerate(dict_with_possible_tokens.items()):
+            print(f'{i + 1}. URL: {key}\nTokens: {value}\n')
 
 
-def scanner(beautified_lines, scan_type):
+def scan_script(beautified_lines: List[str], scan_type: str) -> Optional[List[str]]:
+    third_option_list: List[str] = []
     for line in beautified_lines:
         if "1" in scan_type:
             line_lstrip: str = line.lstrip()
@@ -93,13 +72,13 @@ def scanner(beautified_lines, scan_type):
                 r"[a-zA-Z\d]{25,100}", line)
             if regex_find_result and not any(
                     word.lower() in line.lower() for word in IGNORE_WORD_LIST):
-                print(regex_find_result)
+                for word in regex_find_result:
+                    third_option_list.append(word)
+
+    if len(third_option_list) > 0:
+        return third_option_list
+    return None
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as e:
-        # Better to handle exceptions in the main method
-        # Check https://pylint.pycqa.org/en/latest/user_guide/messages/warning/broad-except.html
-        print(f'{SCRIPT_FAILURE_MSG}\nHere are error details: {e}')
+    main()
