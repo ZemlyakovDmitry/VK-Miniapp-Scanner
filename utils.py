@@ -2,18 +2,19 @@ from typing import Dict, List, Union, Optional
 from validators import url as validate_url, ValidationFailure
 from requests import get
 from bs4 import BeautifulSoup
-from bs4.element import ResultSet
 
 
-def input_handler(max_input_attempts) -> Optional[Dict[str, str]]:
-    input_attempts: int = 0
+def input_handler(max_input_attempts: int) -> Optional[Dict[str, str]]:
+    input_attempts = 0
+    base_url = ""
+    selected_scan_type = ""
 
     while input_attempts < max_input_attempts:
         if input_attempts >= max_input_attempts:
             print('Too many attempts. Exiting...')
-            return None
+            return
 
-        base_url: str = input('Enter URL to check\n> ').split('?')[0]
+        base_url = input('Enter URL to check\n> ').split('?')[0]
         is_url_valid: Union[bool,
                             ValidationFailure] = validate_url(base_url)
         if isinstance(is_url_valid, ValidationFailure):
@@ -26,7 +27,7 @@ def input_handler(max_input_attempts) -> Optional[Dict[str, str]]:
 
     if input_attempts >= max_input_attempts:
         print('Error: Too many attempts. Exiting...')
-        return None
+        return
 
     print(
         '\nList of scan type(s)\n'
@@ -46,7 +47,8 @@ def input_handler(max_input_attempts) -> Optional[Dict[str, str]]:
         break
 
     if input_attempts >= max_input_attempts:
-        return print('Error: Too many attempts. Exiting...')
+        print('Error: Too many attempts. Exiting...')
+        return
 
     return {
         'base_url': base_url,
@@ -55,15 +57,15 @@ def input_handler(max_input_attempts) -> Optional[Dict[str, str]]:
 
 
 def get_list_of_src(base_url: str) -> List[str]:
-    text: str = get(base_url).text
-    soup: BeautifulSoup = BeautifulSoup(text, features='html.parser')
-    scripts: ResultSet = soup.find_all('script')
+    text = get(base_url).text
+    soup = BeautifulSoup(text, features='html.parser')
+    scripts = soup.find_all('script')
     return [link['src'] for link in scripts if 'src' in link.attrs]
 
 
 def get_list_of_scripts(base_url: str) -> List[str]:
     scripts_url: List[str] = []
-    srcs: List[str] = get_list_of_src(base_url)
+    srcs = get_list_of_src(base_url)
 
     for attribute in srcs:
         if "index.html" in base_url:
